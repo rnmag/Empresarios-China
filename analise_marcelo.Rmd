@@ -1,0 +1,1052 @@
+---
+title: "Análise - Marcelo Zorovich"
+author: Rafael Magalhães
+date: "`r format(Sys.time(), '%d de %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    collapsed: no
+    theme: spacelab
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+library(Cairo)
+library(here)
+library(binom)
+library(ggcorrplot)
+library(stargazer)
+library(jtools)
+library(ggstance)
+
+here() # dir de trabalho
+
+# Leitura e limpeza do banco
+bd <- read_excel("bd_final.xlsx")
+
+# tema dos gráficos
+theme_set(theme_classic())
+```
+
+## Correlograma
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+m <- bd %>%
+  transmute(
+    prioridade_eua = case_when(
+      prioridade_eua == "Strongly disagree" ~ 1,
+      prioridade_eua == "Partially disagree"  ~ 2,
+      prioridade_eua == "Neither agree nor disagree" ~ 3,
+      prioridade_eua == "Partially agree" ~ 4,
+      prioridade_eua == "Totally agree" ~ 5
+    ),
+    prioridade_ue = case_when(
+      prioridade_ue == "Strongly disagree" ~ 1,
+      prioridade_ue == "Partially disagree"  ~ 2,
+      prioridade_ue == "Neither agree nor disagree" ~ 3,
+      prioridade_ue == "Partially agree" ~ 4,
+      prioridade_ue == "Totally agree" ~ 5
+    ),
+    prioridade_mercosul = case_when(
+      prioridade_mercosul == "Strongly disagree" ~ 1,
+      prioridade_mercosul == "Partially disagree"  ~ 2,
+      prioridade_mercosul == "Neither agree nor disagree" ~ 3,
+      prioridade_mercosul == "Partially agree" ~ 4,
+      prioridade_mercosul == "Totally agree" ~ 5
+    ),
+    prioridade_pacifico = case_when(
+      prioridade_pacifico == "Strongly disagree" ~ 1,
+      prioridade_pacifico == "Partially disagree"  ~ 2,
+      prioridade_pacifico == "Neither agree nor disagree" ~ 3,
+      prioridade_pacifico == "Partially agree" ~ 4,
+      prioridade_pacifico == "Totally agree" ~ 5
+    ),
+    prioridade_china = case_when(
+      prioridade_china == "Strongly disagree" ~ 1,
+      prioridade_china == "Partially disagree"  ~ 2,
+      prioridade_china == "Neither agree nor disagree" ~ 3,
+      prioridade_china == "Partially agree" ~ 4,
+      prioridade_china == "Totally agree" ~ 5
+    ),
+    investimentos_diretos = case_when(
+      investimentos_diretos == "Strongly disagree" ~ 1,
+      investimentos_diretos == "Partially disagree"  ~ 2,
+      investimentos_diretos == "Neither agree nor disagree" ~ 3,
+      investimentos_diretos == "Partially agree" ~ 4,
+      investimentos_diretos == "Totally agree" ~ 5
+    ),
+    contrapesos = case_when(
+      contrapesos == "Strongly disagree" ~ 1,
+      contrapesos == "Partially disagree"  ~ 2,
+      contrapesos == "Neither agree nor disagree" ~ 3,
+      contrapesos == "Partially agree" ~ 4,
+      contrapesos == "Totally agree" ~ 5
+    ),
+    ideologia = ideologia,
+    receita = case_when(
+      receita == "Up to $ 500 million" ~ 1,
+      receita == "$ 500 million to $ 1 billion"  ~ 2,
+      receita == "$ 1 billion to $ 2 billion" ~ 3,
+      receita == "$ 2 billion to $ 5 billion" ~ 4,
+      receita == "Above $ 10 billion" ~ 5
+    )
+  )
+
+cor <- round(cor(m), 2)
+
+colnames(cor) <- rownames(cor) <- c("Priority: USA",
+                                    "Priority: EU",
+                                    "Priority: Mercosur",
+                                    "Priority: Pac. Alliance",
+                                    "Priority: China",
+                                    "Chinese FDI",
+                                    "Chinese Influence",
+                                    "Ideology",
+                                    "Company Revenue")
+
+ggcorrplot(cor, 
+           hc.order = FALSE,
+           type = "upper", 
+           method = "square", 
+           colors = c("red4", "white", "cadetblue4"), 
+           legend.title = "Pearson's r",
+           lab = FALSE,
+           lab_col = "black", 
+           lab_size = 2,
+           tl.cex = 10,
+           outline.color = "gray60",
+           ggtheme = theme_classic) +
+  labs(title = "Correlogram",
+       subtitle = "Association beween key variables in the study") +
+  theme(plot.subtitle = element_text(face = "italic"))
+
+```
+
+## Modelos de Regressão
+
+### Variável Dependente: FDI {.tabset .tabset-fade .tabset-pills}
+
+#### Modelos lineares {.tabset .tabset-fade}
+
+##### Gráfico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+bd_reg <- bd %>%
+  mutate(
+    china = case_when(
+      prioridade_china == "Partially agree" |
+        prioridade_china == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_eua = case_when(
+      prioridade_eua == "Partially agree" |
+        prioridade_eua == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_ue = case_when(
+      prioridade_ue == "Partially agree" |
+        prioridade_ue == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_mercosul = case_when(
+      prioridade_mercosul == "Partially agree" |
+        prioridade_mercosul == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_pacifico = case_when(
+      prioridade_pacifico == "Partially agree" |
+        prioridade_pacifico == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    investimentos_diretos = case_when(
+      investimentos_diretos == "Partially agree" |
+        investimentos_diretos == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    contrapesos = case_when(
+      contrapesos == "Partially agree" |
+        contrapesos == "Totally agree" ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+f1 <- lm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia,
+         data = bd_reg)
+
+f2 <- lm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico,
+         data = bd_reg)
+
+f3 <- lm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico +
+           factor(multinacional) +
+           factor(relacoes_china),
+         data = bd_reg)
+
+plot_summs(f1, f2, f3, 
+           scale = TRUE,
+           colors = "Qual3",
+           coefs = c("Chinese Trade" = "china",
+                     "Chinese Influence" = "contrapesos",
+                     "Ideology" = "ideologia",
+                     "Priority: USA" = "prioridade_eua",
+                     "Priority: EU" = "prioridade_ue",
+                     "Priority: Mercosur" = "prioridade_mercosul",
+                     "Priority: Pacific Alliance" = "prioridade_pacifico",
+                     "Foreign multinational" = "`factor(multinacional)`Foreign multinational",
+                     "National company" = "`factor(multinacional)`National company",
+                     "Relations w/ China" = "`factor(relacoes_china)`"))
+
+
+```
+
+##### Tabela
+```{r message=FALSE, warning=FALSE, results='asis'}
+stargazer(f1,
+          f2,
+          f3,
+          covariate.labels = c("Chinese Trade",
+                               "Chinese Influence",
+                               "Ideology",
+                               "Priority: USA",
+                               "Priority: EU",
+                               "Priority: Mercosur",
+                               "Priority: Pacific Alliance",
+                               "Foreign multinational",
+                               "National company",
+                               "Relations w/ China"),
+          dep.var.labels = "Chinese FDI",
+          model.numbers = FALSE,
+          type = "html")
+
+
+```
+
+#### Modelos Logit {.tabset .tabset-fade}
+
+
+
+##### Gráfico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+fl1 <- glm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia,
+         data = bd_reg,
+         family = binomial)
+
+fl2 <- glm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico,
+         data = bd_reg,
+         family = binomial)
+
+fl3 <- glm(investimentos_diretos ~
+           china +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico +
+           factor(multinacional) +
+           factor(relacoes_china),
+         data = bd_reg,
+         family = binomial)
+
+
+plot_summs(fl1, fl2, fl3, 
+           scale = TRUE,
+           colors = "Qual3",
+           coefs = c("Chinese Trade" = "china",
+                     "Chinese Influence" = "contrapesos",
+                     "Ideology" = "ideologia",
+                     "Priority: USA" = "prioridade_eua",
+                     "Priority: EU" = "prioridade_ue",
+                     "Priority: Mercosur" = "prioridade_mercosul",
+                     "Priority: Pacific Alliance" = "prioridade_pacifico",
+                     "Foreign multinational" = "`factor(multinacional)`Foreign multinational",
+                     "National company" = "`factor(multinacional)`National company",
+                     "Relations w/ China" = "`factor(relacoes_china)`"))
+
+
+```
+
+##### Tabela
+```{r message=FALSE, warning=FALSE, results='asis'}
+stargazer(fl1,
+          fl2,
+          fl3,
+          covariate.labels = c("Chinese Trade",
+                               "Chinese Influence",
+                               "Ideology",
+                               "Priority: USA",
+                               "Priority: EU",
+                               "Priority: Mercosur",
+                               "Priority: Pacific Alliance",
+                               "Foreign multinational",
+                               "National company",
+                               "Relations w/ China"),
+          dep.var.labels = "Chinese FDI",
+          model.numbers = FALSE,
+          type = "html")
+
+
+```
+
+### Variável Dependente: Trade {.tabset .tabset-fade .tabset-pills}
+
+#### Modelos lineares {.tabset .tabset-fade}
+
+##### Gráfico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+bd_reg <- bd %>%
+  mutate(
+    china = case_when(
+      prioridade_china == "Partially agree" |
+        prioridade_china == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_eua = case_when(
+      prioridade_eua == "Partially agree" |
+        prioridade_eua == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_ue = case_when(
+      prioridade_ue == "Partially agree" |
+        prioridade_ue == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_mercosul = case_when(
+      prioridade_mercosul == "Partially agree" |
+        prioridade_mercosul == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    prioridade_pacifico = case_when(
+      prioridade_pacifico == "Partially agree" |
+        prioridade_pacifico == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    investimentos_diretos = case_when(
+      investimentos_diretos == "Partially agree" |
+        investimentos_diretos == "Totally agree" ~ 1,
+      TRUE ~ 0
+    ),
+    contrapesos = case_when(
+      contrapesos == "Partially agree" |
+        contrapesos == "Totally agree" ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+m1 <- lm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia,
+         data = bd_reg)
+
+m2 <- lm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico,
+         data = bd_reg)
+
+m3 <- lm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico +
+           factor(multinacional) +
+           factor(relacoes_china),
+         data = bd_reg)
+
+plot_summs(m1, m2, m3, 
+           scale = TRUE,
+           colors = "Qual3",
+           coefs = c("Chinese FDI" = "investimentos_diretos",
+                     "Chinese Influence" = "contrapesos",
+                     "Ideology" = "ideologia",
+                     "Priority: USA" = "prioridade_eua",
+                     "Priority: EU" = "prioridade_ue",
+                     "Priority: Mercosur" = "prioridade_mercosul",
+                     "Priority: Pacific Alliance" = "prioridade_pacifico",
+                     "Foreign multinational" = "`factor(multinacional)`Foreign multinational",
+                     "National company" = "`factor(multinacional)`National company",
+                     "Relations w/ China" = "`factor(relacoes_china)`"))
+
+
+```
+
+##### Tabela
+```{r message=FALSE, warning=FALSE, results='asis'}
+stargazer(m1,
+          m2,
+          m3,
+          covariate.labels = c("Chinese FDI",
+                               "Chinese Influence",
+                               "Ideology",
+                               "Priority: USA",
+                               "Priority: EU",
+                               "Priority: Mercosur",
+                               "Priority: Pacific Alliance",
+                               "Foreign multinational",
+                               "National company",
+                               "Relations w/ China"),
+          dep.var.labels = "Trade Priority w/ China",
+          model.numbers = FALSE,
+          type = "html")
+
+
+```
+
+#### Modelos Logit {.tabset .tabset-fade}
+
+##### Gráfico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+l1 <- glm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia,
+         data = bd_reg,
+         family = binomial)
+
+l2 <- glm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico,
+         data = bd_reg,
+         family = binomial)
+
+l3 <- glm(china ~
+           investimentos_diretos +
+           contrapesos +
+           ideologia +
+           prioridade_eua +
+           prioridade_ue +
+           prioridade_mercosul +
+           prioridade_pacifico +
+           factor(multinacional) +
+           factor(relacoes_china),
+         data = bd_reg,
+         family = binomial)
+
+
+plot_summs(l1, l2, l3, 
+           scale = TRUE,
+           colors = "Qual3",
+           coefs = c("Chinese FDI" = "investimentos_diretos",
+                     "Chinese Influence" = "contrapesos",
+                     "Ideology" = "ideologia",
+                     "Priority: USA" = "prioridade_eua",
+                     "Priority: EU" = "prioridade_ue",
+                     "Priority: Mercosur" = "prioridade_mercosul",
+                     "Priority: Pacific Alliance" = "prioridade_pacifico",
+                     "Foreign multinational" = "`factor(multinacional)`Foreign multinational",
+                     "National company" = "`factor(multinacional)`National company",
+                     "Relations w/ China" = "`factor(relacoes_china)`"))
+
+
+```
+
+##### Tabela
+```{r message=FALSE, warning=FALSE, results='asis'}
+stargazer(l1,
+          l2,
+          l3,
+          covariate.labels = c("Chinese FDI",
+                               "Chinese Influence",
+                               "Ideology",
+                               "Priority: USA",
+                               "Priority: EU",
+                               "Priority: Mercosur",
+                               "Priority: Pacific Alliance",
+                               "Foreign multinational",
+                               "National company",
+                               "Relations w/ China"),
+          dep.var.labels = "Trade Priority w/ China",
+          model.numbers = FALSE,
+          type = "html")
+
+
+```
+
+## Experimento: metodologia e resultados
+Os resultados do experimento são muito animadores do ponto de vista estatístico, e os mais inovadores do ponto de vista do desenho da pesquisa. Os respondentes foram alocados **aleatoriamente** em 3 diferentes grupos, e todos responderam exatamente às mesmas perguntas, com exceção da última.
+
+A última pergunta solicitava ao respondente que se posicionasse a favor ou contra medidas restritivas e imposição de barreiras tarifárias à China. O enunciado, porém, tinha 3 versões diferentes. Ao abrir o questionário, o respondente era sorteado automaticamente para receber um dos seguintes textos:
+
+**Grupo A (controle)**: "No Brasil, há questionamentos quanto a se deveríamos impor limites aos investimentos chineses no país. Neste sentido, com relação a negociações com a China, fomento de acordos comerciais e atração de investimentos diretos estrangeiros no Brasil, qual das alternativas melhor reflete a visão de sua empresa?"
+
+**Grupo B (tratamento positivo)**: "A estratégia internacional “going global” da China e a criação do Fundo Brasil-China de US$ 20 bilhões indicam que uma nova etapa nas relações econômicas Brasil-China foi iniciada. Além de principal parceiro comercial, a China passa a ter uma contribuição relevante na entrada de investimentos diretos estrangeiros no Brasil. Diante deste contexto, qual das alternativas melhor reflete a visão de sua empresa?"
+
+**Grupo C (tratamento negativo)**: "Constata-se que as exportações da América Latina para a China são mais intensivas em gases poluentes do que as exportações para o resto do mundo e que os investimentos externos diretos da China para a região também estão mais concentrados em setores mais intensivos em gases poluentes. Argumenta-se que estas violações do meio ambiente podem diminuir o interesse para negociações, acordos comerciais e de investimentos com reflexo na atração de investimentos diretos estrangeiros por parte da China. Qual das alternativas melhor reflete a visão de sua empresa?"
+
+O primeiro texto tem uma redação neutra, que utilizaremos como *benchmark*. Esse será nosso grupo de controle. O grupo B, por sua vez, introduz informações favoráveis à China, lembrando ao entrevistado a relevância do país para o comércio externo brasileiro. Por fim, o grupo C traz informações negativas sobre a China, mencionando sua má reputação na proteção do meio ambiente. A grande vantagem desse desenho de pesquisa é que conseguimos capturar o efeito preciso da redação da pergunta sobre a predisposição do entrevistado a apoiar barreiras comerciais à China, eliminando relações espúrias que poderiam ser ocasionadas por covariáveis não controladas (ou não observadas).
+
+Os resultados são interessantes. O gráfico abaixo mostra que, entre os respondentes que receberam o texto neutro, 23,9% se declaram favoráveis a medidas protetivas contra a China. Entre aqueles que receberam o tratamento positivo, 19,2% se declaram favoráveis. O tratamento positivo não é estatisticamente diferente do grupo de tratamento (p > 0,05). Um possível motivo para isso é que as informações sobre o comércio brasileiro com a China já sejam conhecidas entre os respondentes. Neste caso, o tratamento positico não estaria trazendo nenhuma informação nova, e não deveríamos esperar diferença significativa entre os grupos A e B.
+
+O tratamento negativo, por sua vez, tem efeito bastante visível. Entre esses respondentes, 42,1% se declaram favoráveis à imposição de barreiras à China, valor considerável quando comparado aos 23,9% no grupo de controle. A diferença entre os grupos A e C é estatisticamente significativa (p = 0,008), de modo que **a pesquisa mostra evidência robusta de que tomadores de decisão mudam sua postura em relação à China quando são lembrados do tratamento que aquele país dispensa ao meio ambiente**. Trata-se de um resultado iluminador não só para a compreensão das dinâmicas globais de investimento, como também para a discussão das possíveis consequências da agenda ambiental do Brasil.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+bd_exp <- bd %>% 
+  mutate(limites_investimentos2 = case_when(limites_investimentos == "A favor de medidas restritivas e imposição de barreiras à China" ~ 1,
+                                            TRUE ~ 0)) %>% 
+  group_by(grupo) %>% 
+  summarise(n = n(),
+            Favor = sum(limites_investimentos2),
+            Contra = n - Favor)
+
+props <- binom.confint(bd_exp$Favor, bd_exp$n, methods = "asymptotic") %>% 
+  bind_cols(bd_exp)
+
+ggplot(props,
+       aes(x = factor(grupo, levels = c("A", "B", "C")), 
+           y = mean)) +
+  geom_errorbar(aes(ymin = lower,
+                     ymax = upper),
+                     width = 0.05,
+                     size  = 0.3) +
+  geom_point(shape = 18,
+             size  = 3) +
+  labs(title = "Sanctions in China",
+       subtitle = "Treatment Effects on Supporting Sanctions in China",
+       caption = "Source: survey data. \nNumber of observations: 113 (group A), 104 (group B) and 95 (group C).",
+       fill = "Investimentos chineses",
+       x = NULL,
+       y = NULL) +
+  theme(plot.subtitle = element_text(face = "italic"),
+        axis.title = element_text(face  = "bold")) +
+  ylab("% Support China Sanctions") +
+  xlab("Treatment Groups")
+```
+
+## Perfil dos Respondentes {.tabset .tabset-fade .tabset-pills}
+Os respondentes têm distribuição ideológica com tendências de centro-direita. A amostra é composta por decisores de todas as matizes, e não há variação significativa entre diferentes níveis hierárquicos.
+
+### Ideologia por nível hierárquico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(ideologia))) +
+  geom_density(aes(x = ideologia, 
+                   fill = factor(n_hierarquico, 
+                          levels = c("CEO, Vice-President",
+                                     "Director",
+                                     "Manager",
+                                     "Superintendent",
+                                     "Other decision-makers"))), 
+               alpha = .4, size = 1) +
+  geom_rug(aes(x = ideologia, y = 0), position = position_jitter(height = 0, width = .2), sides = "b") +
+  labs(title = "Ideology by hierarchical level",
+       subtitle = "Ideological distribution of respondents by hierarchical level",
+       caption = "Source: survey data. \nNumber of observations: 312.",
+       fill = "",
+       x = NULL,
+       y = NULL) +
+  scale_x_continuous(breaks = 0:10,
+                     labels = c("Far left", 1, 2, 3, 4, 5, 6, 7, 8, 9,  "Far right")) +
+  theme(plot.subtitle = element_text(face = "italic"),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "top")
+
+```
+
+
+### Distribuição Total
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(ideologia))) +
+  geom_density(aes(x = ideologia), fill = "black", alpha = .1, size = 1) +
+  geom_rug(aes(x = ideologia, y = 0), position = position_jitter(height = 0, width = .2), sides = "b") +
+  labs(title = "Ideology",
+       subtitle = '"On a scale of 0 to 10, where 0 means FAR LEFT and 10 FAR RIGHT, indicate \nyour political-ideological preference"',
+       caption = "Source: survey data. \nNumber of observations: 312.",
+       fill = "Investimentos chineses",
+       x = NULL,
+       y = NULL) +
+  scale_x_continuous(breaks = 0:10,
+                     labels = c("Far left", 1, 2, 3, 4, 5, 6, 7, 8, 9,  "Far right")) +
+  theme(plot.subtitle = element_text(face = "italic"),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.ticks.x = element_blank())
+
+```
+
+## Relações com a China por tipo de empresa
+Entre as empresas representadas na amostra, as nacionais são aquelas que têm menor nível de relacionamento com a China. Multinacionais com operações no Brasil, por sua vez, têm o maior nível de associação com a economia chinesa.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+table(bd$relacoes_china, bd$multinacional) %>% 
+  mosaicplot(shade = TRUE,
+             main = "Maintains Relationship with China",
+             xlab = "",
+             ylab = "",
+             off = 5,
+             las = 1)
+```
+
+## Prioridades {.tabset .tabset-fade .tabset-pills}
+Clique no país/região desejado para ver o gráfico correspondente.
+ 
+### China 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(prioridade_china)),
+       aes(x = factor(prioridade_china,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Priority - China",
+         subtitle = '"My company should prioritize support for direct investment negotiations \nwith China"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.05, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+### EUA 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(prioridade_eua)),
+       aes(x = factor(prioridade_eua,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100 + 5)) +
+    labs(title = "Priority - USA",
+         subtitle = '"My company should prioritize support for direct investment negotiations \nwith the USA"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = .1, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+### UE 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(prioridade_ue)),
+       aes(x = factor(prioridade_ue,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100 + 5)) +
+    labs(title = "Priority - European Union",
+         subtitle = '"My company should prioritize support for direct investment negotiations \nwith the European Union"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = .05, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+### Mercosul 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(prioridade_mercosul)),
+       aes(x = factor(prioridade_mercosul,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100 + 5)) +
+    labs(title = "Priority - Mercosur",
+         subtitle = '"My company should prioritize support for direct investment negotiations \nwith Mercosur"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = .05, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+### Aliança do Pacífico 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(prioridade_pacifico)),
+       aes(x = factor(prioridade_pacifico,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100 + 3)) +
+    labs(title = "Priority - Pacific Alliance",
+         subtitle = '"My company should prioritize support for direct investment negotiations \nwith the Pacific Alliance"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = .05, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## Atores 
+Chama a atenção o baixo nível de confiança no sistema político brasileiro, principalmente partidos políticos e o Congresso Nacional. É possível observar um padrão no qual os setores mais bem avaliados do Estado fazem parte do Poder Executivo, seja o nível federal ou os governos dos entes subnacionais.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+coalizoes_mult <- data.frame(table(bd$atores_coalizoes))
+governo_mult <- data.frame(table(bd$atores_governo))
+partidos_mult <- data.frame(table(bd$atores_partidos))
+congresso_mult <- data.frame(table(bd$atores_congresso))
+subnacionais_mult <- data.frame(table(bd$atores_subnacionais))
+
+atores_mult <- rbind(coalizoes_mult,
+                     governo_mult,
+                     partidos_mult,
+                     congresso_mult,
+                     subnacionais_mult) %>% 
+  rename(Atores = Var1) %>% 
+  mutate(Perc = round(Freq / as.numeric(tally(bd)) * 100, 1))
+
+atores_mult$Atores <- fct_recode(atores_mult$Atores,
+                                 `Business Coalitions` = "Coalizões, Fóruns e Conselhos Empresariais, Associações de Classe, Câmaras de Comércio e/ou Federações de indústrias do Brasil",
+                                 `Federal Gov.` = "Governo Brasileiro (exemplo: Ministério das Relações Exteriores-Itamaraty, Ministério da Economia, Agricultura)",
+                                 `Political Parties` = "Partidos Políticos brasileiros",
+                                  Congress = "Congresso Brasileiro",
+                                 `Subnational Govs.` = "Governos estaduais  e municípios brasileiros")
+
+ggplot(atores_mult,
+       aes(x = factor(Atores,
+                      levels = c("Political Parties",
+                                 "Congress",
+                                 "Subnational Govs.",
+                                 "Federal Gov.",
+                                 "Business Coalitions")),
+           y = Perc,
+           label = paste0(Perc, "%"))) +
+  geom_col() +
+  labs(title = "Trusted Players",
+       subtitle = '"Which actors do you count on to define the commercial strategy and/or \ninvestments that can foster the attraction of Foreign Direct Investment?"',
+       caption = "Multiple responses. Percentages based on the number of respondents (312). \nThe sum of the percentages may exceed 100%.",
+       x = NULL,
+       y = NULL) +
+    geom_text(position = position_dodge(width = 0.9),
+            hjust = -.1,
+            size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## Investimentos Diretos 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(investimentos_diretos)),
+       aes(x = factor(investimentos_diretos,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Direct Investments",
+         subtitle = '"With the support of the Chinese government, the internationalization \nstrategy of Chinese companies favors Chinese direct investments in \nvarious sectors in Brazil through greenfield, mergers and acquisitions, as \nwell as joint ventures. Is your company in favor of joining in negotiations \nand agreements with China that foster such investments?"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 3) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## China vs EUA 
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(contrapesos)),
+       aes(x = factor(contrapesos,
+                      levels = c("Strongly disagree",
+                                 "Partially disagree",
+                                 "Neither agree nor disagree",
+                                 "Partially agree",
+                                 "Totally agree")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Chinese and American Investment",
+         subtitle = '"Increasing risks in the international arena have materialized due to ten-\nsions between the USA and China, resulting in a trade war and tech-\nnological competition, with potential impacts for Brazil. The United States\'\n motivations go beyond trade deficits and target Chinese industrial and \ninnovation policies. Due to this global power game between the two larg-\nest economies, associated with the distancing of the USA from Latin \nAmerica, more than 50% of Chinese direct investments in the Latin Ame-\nrican region have been channeled to Brazil. This fact can be understood \nas a counterweight and response by the Chinese to the political and eco-\nnomic vacuum left by the USA in the region. Given this power struggle, \nis it beneficial to have this counterbalance favoring Chinese investments \nin Brazil?"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 2.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## País de origem das empresas
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(pais_origem)),
+       aes(x = fct_rev(fct_infreq(pais_origem)))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Home Country",
+         subtitle = '"Indicate the country of origin of the company"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = -.1, 
+              color = "black",
+              size = 2) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## Nível hierárquico
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(n_hierarquico)),
+       aes(x = factor(n_hierarquico, 
+                          levels = c("Other decision-makers",
+                                     "Superintendent",
+                                     "Manager",
+                                     "Director",
+                                     "CEO, Vice-President")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Hierarchical Level",
+         subtitle = '"Indicate your hierarchical level"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 3.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## Setor
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(setor)),
+       aes(x = fct_rev(fct_infreq(setor)))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Sector",
+         subtitle = '"Indicate the sector in which the company operates"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100 + 2.5, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              # hjust = -.01, 
+              color = "black",
+              size = 2.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+## Tipo de empresa
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(multinacional)),
+       aes(x = fct_rev(fct_infreq(multinacional)))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Internationalization",
+         subtitle = '"How would you characterize your company?"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 3.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+
+```
+
+## Receita
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(receita)),
+       aes(x = factor(receita, 
+                          levels = c("Above $ 10 billion",
+                                     "$ 2 billion to $ 5 billion",
+                                     "$ 1 billion to $ 2 billion",
+                                     "$ 500 million to $ 1 billion",
+                                     "Up to $ 500 million")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Revenue",
+         subtitle = '"What was your company\'s annual net revenue in dollars in 2018?"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 3.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+
+```
+
+## Relações com a China
+```{r echo=FALSE, message=FALSE, warning=FALSE, dev='CairoPNG'}
+ggplot(subset(bd, !is.na(relacoes_china)),
+       aes(x = factor(relacoes_china,
+                      levels = c("No",
+                                 "Yes")))) +
+    geom_bar(aes(y = prop.table(..count..) * 100)) +
+    labs(title = "Relationship with China",
+         subtitle = '"Does your company have economic, commercial and/or investment relations with China?"',
+         caption = "Source: survey data. \nNumber of observations: 312.",
+         x = NULL,
+         y = NULL) +
+    geom_text(stat = "count", 
+              aes(y = prop.table(..count..) * 100, 
+                  label = paste0(round(prop.table(..count..) * 100, 1), '%')), 
+              hjust = 1.1, 
+              color = "white",
+              size = 3.5) +
+    coord_flip() +
+    theme(plot.subtitle = element_text(face = "italic"),
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank())
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
