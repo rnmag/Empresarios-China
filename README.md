@@ -1,16 +1,5 @@
 # Survey experiment on Chinese trade in Brazil
 
-Survey experimental design and data analysis on the topic of attitudes towards Chinese trade among decision makers in the private sector. Results include:
-
-## ATE
-![ATE](https://github.com/rnmag/Empresarios-China/blob/main/ate.png?raw=true)
-
-## Correlogram
-![Correlogram](https://github.com/rnmag/Empresarios-China/blob/main/correlogram.png?raw=true)
-
-## Ideology distribution
 ![Ideology](https://github.com/rnmag/Empresarios-China/blob/main/ideology.png?raw=true)
-
-## Models
 ![Coefs](https://github.com/rnmag/Empresarios-China/blob/main/coef_plot.png?raw=true)
-
+![ATE](https://github.com/rnmag/Empresarios-China/blob/main/ate.png?raw=true)
